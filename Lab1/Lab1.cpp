@@ -1,6 +1,6 @@
 ﻿#include <iostream>
 #include <vector>
-#include <thread> 
+#include <thread>
 #include <chrono>
 #include <cstdlib> 
 #include <ctime>   
@@ -21,7 +21,9 @@ void solveSequential(int N, vector<vector<int>>& matrix) {
     for (int j = 0; j < N; ++j) {
         int max_val = matrix[0][j];
         for (int i = 1; i < N; ++i) {
-            if (matrix[i][j] > max_val) max_val = matrix[i][j];
+            if (matrix[i][j] > max_val) {
+                max_val = matrix[i][j];
+            }
         }
         matrix[j][j] = max_val;
     }
@@ -31,15 +33,20 @@ void partialSolve(int N, vector<vector<int>>* matrix, int start_col, int end_col
     for (int j = start_col; j < end_col; ++j) {
         int max_val = (*matrix)[0][j];
         for (int i = 1; i < N; ++i) {
-            if ((*matrix)[i][j] > max_val) max_val = (*matrix)[i][j];
+            if ((*matrix)[i][j] > max_val) {
+                max_val = (*matrix)[i][j];
+            }
         }
         (*matrix)[j][j] = max_val;
     }
 }
 
 double solveParallel(int N, vector<vector<int>>& matrix, int num_threads) {
+    if (num_threads <= 0) return 0;
+
     vector<thread> threads;
     int chunk = N / num_threads;
+
     auto start = high_resolution_clock::now();
 
     for (int i = 0; i < num_threads; ++i) {
@@ -47,18 +54,63 @@ double solveParallel(int N, vector<vector<int>>& matrix, int num_threads) {
         int end_col = (i == num_threads - 1) ? N : (i + 1) * chunk;
         threads.emplace_back(partialSolve, N, &matrix, start_col, end_col);
     }
+
     for (auto& th : threads) th.join();
 
     auto end = high_resolution_clock::now();
-    return duration<double>(end - start).count();
+    duration<double> elapsed = end - start;
+    return elapsed.count();
+}
+
+void runTest(int N) {
+    cout << "\n>>> Matrix: " << N << "x" << N << " <<<" << endl;
+
+    vector<vector<int>> matrix(N, vector<int>(N));
+    fillMatrix(matrix, N);
+
+    auto start_seq = high_resolution_clock::now();
+    solveSequential(N, matrix);
+    auto end_seq = high_resolution_clock::now();
+    duration<double> seq_time = end_seq - start_seq;
+
+    cout << "Sequential Execution: " << fixed << setprecision(5) << seq_time.count() << "s" << endl;
+
+    unsigned int logical_cores = thread::hardware_concurrency();
+    unsigned int physical_cores = logical_cores / 2;
+    if (physical_cores == 0) physical_cores = 1;
+
+    vector<int> thread_counts = {
+        (int)physical_cores / 2,
+        (int)physical_cores,
+        (int)logical_cores,
+        (int)logical_cores * 2,
+        (int)logical_cores * 4,
+        (int)logical_cores * 8,
+        (int)logical_cores * 16
+    };
+
+    cout << left << setw(10) << "Threads" << "Execution Time (s)" << endl;
+    cout << "-----------------------------------" << endl;
+
+    for (int tc : thread_counts) {
+        if (tc <= 0) continue;
+        fillMatrix(matrix, N);
+        double p_time = solveParallel(N, matrix, tc);
+        cout << left << setw(10) << tc << p_time << "s" << endl;
+    }
 }
 
 int main() {
     srand(static_cast<unsigned int>(time(0)));
-    int N = 5000;
-    vector<vector<int>> matrix(N, vector<int>(N));
-    fillMatrix(matrix, N);
 
-    cout << "Parallel time (4 threads): " << solveParallel(N, matrix, 4) << "s" << endl;
+    unsigned int cores = thread::hardware_concurrency();
+    cout << "Logical cores detected: " << cores << endl;
+
+    runTest(2000);
+    runTest(5000);
+    runTest(10000);
+
     return 0;
 }
+
+
